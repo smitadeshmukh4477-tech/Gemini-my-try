@@ -1,57 +1,51 @@
 import streamlit as st
+import google.generativeai as genai
 from duckduckgo_search import DDGS
-import re
 
-# --- UI SETUP ---
-st.set_page_config(page_title="Gemini-Ultra v6.9", page_icon="💎")
-st.title("💎 Gemini-Ultra Universal")
-st.markdown("### 8th Grade Tech Showcase")
+# --- SETUP ---
+# Put your API Key here inside the quotes
+API_KEY = "AIzaSyDobAz6bT6FGvAyeSf0YdDVS-PwDXH9W5" 
 
-# Initialize chat history
+genai.configure(api_key=API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
+
+st.set_page_config(page_title="Gemini-Ultra OMNI", page_icon="🌎")
+st.title("🌎 Gemini-Ultra: Omni Intelligence")
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display chat history
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- CORE FUNCTIONS ---
+# --- LIVE SEARCH TOOL ---
 def web_search(query):
     try:
         with DDGS() as ddgs:
-            results = ddgs.text(query, region='wt-wt', safesearch='moderate', timelimit='y')
-            clean = []
-            for r in list(results)[:3]:
-                clean.append(f"📍 **{r['title']}**\n{r['body']}")
-            return "\n\n".join(clean) if clean else "No live data found."
-    except:
-        return "Search satellites are currently offline."
+            results = ddgs.text(query, region='wt-wt', safesearch='moderate', max_results=3)
+            return "\n\n".join([f"🌐 {r['title']}\n{r['body']}" for r in results])
+    except: return ""
 
-# --- CHAT INPUT ---
-if prompt := st.chat_input("Type 'search [topic]' or ask a question..."):
+# --- MAIN CHAT ---
+if prompt := st.chat_input("Ask me absolutely anything..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        ui = prompt.lower()
-        # Math
-        if any(op in ui for op in ["+", "-", "*", "/"]):
-            try:
-                clean_expr = re.sub(r'[^0-9+\-*/().\s]', '', ui)
-                response = f"🔢 **Math Engine:** {clean_expr} = `{eval(clean_expr)}`"
-            except: response = "Math error!"
-        # Search
-        elif ui.startswith("search "):
-            response = web_search(ui.replace("search ", ""))
-        # Wiki
-        elif "blox fruits" in ui:
-            response = "⚓ **Wiki:** Mirage Island spawns at night. Blue Gear is needed for Race V4!"
-        elif "minecraft" in ui:
-            response = "🏗️ **Wiki:** Technical MC 1.21.1 works best with Litematica for schematics."
-        else:
-            response = "I'm live! Try: `search latest news` or `calculate 500/2`."
+        # 1. Decide if we need live web data for news/current events
+        search_data = ""
+        if any(word in prompt.lower() for word in ["news", "war", "today", "latest", "score"]):
+            with st.spinner("Searching live web..."):
+                search_data = web_search(prompt)
 
-        st.markdown(response)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        # 2. Use the AI Brain + Search Data
+        full_context = f"User Question: {prompt}\n\nLive Web Info: {search_data}"
+        
+        with st.spinner("Thinking..."):
+            response = model.generate_content(full_context)
+            ai_text = response.text
+
+        st.markdown(ai_text)
+        st.session_state.messages.append({"role": "assistant", "content": ai_text})
