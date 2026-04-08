@@ -4,7 +4,7 @@ from duckduckgo_search import DDGS
 
 # --- SETUP ---
 # Put your API Key here inside the quotes
-API_KEY = "AIzaSyDobAz6bT6FGvAyeSf0YdDVS-PwDXH9W5" 
+API_KEY = "AIzaSyDobAz6bT6FGvAyeSf0YdDVS-PwDXH9W5I" 
 
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
