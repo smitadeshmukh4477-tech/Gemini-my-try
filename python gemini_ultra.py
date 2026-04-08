@@ -3,7 +3,7 @@ import google.generativeai as genai
 from duckduckgo_search import DDGS
 
 # --- 1. THE KEY (SECURE METHOD) ---
-# This looks for the key you just saved in Streamlit "Secrets"
+# Use your fresh key from Step 2 below
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
 except:
@@ -13,13 +13,15 @@ except:
 # --- 2. INITIALIZE AI ---
 try:
     genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Using 'gemini-3-flash-preview' - the current stable version for April 2026
+    model = genai.GenerativeModel('gemini-3-flash-preview')
 except Exception as e:
     st.error(f"Setup Error: {e}")
 
 # --- 3. UI SETUP ---
 st.set_page_config(page_title="Gemini-Ultra OMNI", page_icon="🌎", layout="wide")
 st.title("🌎 Gemini-Ultra: Omni Intelligence")
+st.caption("Status: Connected to Gemini 3 Multi-Model Archives")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -53,13 +55,14 @@ if prompt := st.chat_input("Ask me about anything..."):
             with st.spinner("Searching live web..."):
                 search_data = web_search(prompt)
 
+        # Context merging
         if search_data:
-            full_context = f"LATEST DATA:\n{search_data}\n\nUSER QUESTION: {prompt}"
+            full_context = f"LATEST WEB DATA:\n{search_data}\n\nUSER QUESTION: {prompt}"
         else:
             full_context = prompt
 
         try:
-            with st.spinner("Thinking..."):
+            with st.spinner("Thinking with Gemini 3..."):
                 response = model.generate_content(full_context)
                 ai_text = response.text
                 st.markdown(ai_text)
