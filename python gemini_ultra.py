@@ -4,7 +4,7 @@ from duckduckgo_search import DDGS
 
 # --- 1. THE KEY ---
 # Use the key ending in 9W5I or TXDA
-API_KEY = "YOUR_API_KEY_HERE" 
+API_KEY = "AIzaSyDobAz6bT6FGvAyeSf0YdDVS-PwDXH9W5I" 
 
 # --- 2. INITIALIZE AI ---
 try:
