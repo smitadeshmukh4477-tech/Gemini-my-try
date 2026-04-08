@@ -2,22 +2,24 @@ import streamlit as st
 import google.generativeai as genai
 from duckduckgo_search import DDGS
 
-# --- 1. THE KEY ---
-# Use your key from AI Studio (the one ending in 9W5I or TXDA)
-API_KEY = "AIzaSyDobAz6bT6FGvAyeSf0YdDVS-PwDXH9W5I" 
+# --- 1. THE KEY (SECURE METHOD) ---
+# This looks for the key you just saved in Streamlit "Secrets"
+try:
+    API_KEY = st.secrets["GEMINI_API_KEY"]
+except:
+    st.error("Missing API Key! Please add 'GEMINI_API_KEY' to your Streamlit Secrets.")
+    st.stop()
 
 # --- 2. INITIALIZE AI ---
 try:
     genai.configure(api_key=API_KEY)
-    # Using the 2026 stable model ID to stop the 404 error
-    model = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
+    model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
     st.error(f"Setup Error: {e}")
 
 # --- 3. UI SETUP ---
 st.set_page_config(page_title="Gemini-Ultra OMNI", page_icon="🌎", layout="wide")
 st.title("🌎 Gemini-Ultra: Omni Intelligence")
-st.caption("Status: Multi-Model Knowledge Engine (2026 Edition)")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -35,7 +37,7 @@ def web_search(query):
                 return "\n\n".join([f"🌐 {r['title']}\n{r['body']}" for r in results])
             return "No live data found."
     except Exception as e:
-        return f"Web search currently busy. (Error: {e})"
+        return f"Web search busy. (Error: {e})"
 
 # --- 5. MAIN CHAT LOGIC ---
 if prompt := st.chat_input("Ask me about anything..."):
@@ -45,27 +47,22 @@ if prompt := st.chat_input("Ask me about anything..."):
 
     with st.chat_message("assistant"):
         search_data = ""
-        # Auto-detect if we need live data for games/news
         live_keywords = ["news", "today", "latest", "score", "match", "blox fruits", "update"]
         
         if any(word in prompt.lower() for word in live_keywords):
-            with st.spinner("Accessing live web archives..."):
+            with st.spinner("Searching live web..."):
                 search_data = web_search(prompt)
 
-        # Combine Search + AI Brain
         if search_data:
             full_context = f"LATEST DATA:\n{search_data}\n\nUSER QUESTION: {prompt}"
         else:
             full_context = prompt
 
         try:
-            with st.spinner("Consulting Universal Brain..."):
+            with st.spinner("Thinking..."):
                 response = model.generate_content(full_context)
                 ai_text = response.text
-                
                 st.markdown(ai_text)
                 st.session_state.messages.append({"role": "assistant", "content": ai_text})
-        
         except Exception as e:
-            st.error("⚠️ AI Brain Connection Issue")
-            st.info(f"The model might be busy or the key needs refreshing. Details: {e}")
+            st.error(f"Connection Issue: {e}")
