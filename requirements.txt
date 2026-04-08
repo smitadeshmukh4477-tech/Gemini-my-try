@@ -1,2 +1,3 @@
-duckduckgo-search
 streamlit
+duckduckgo-search
+google-generativeai
