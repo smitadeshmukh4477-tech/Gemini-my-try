@@ -3,26 +3,28 @@ import google.generativeai as genai
 from duckduckgo_search import DDGS
 
 # --- 1. THE LOCK (PASSWORD) ---
-# Set your own password here!
-MY_PASSWORD = "death" 
+# CHANGE THIS to your own secret word!
+MY_PASSWORD = "your_secret_password" 
 
 st.sidebar.title("🔐 Access Control")
-user_pass = st.sidebar.text_input("Enter Password to Chat", type="password")
+user_pass = st.sidebar.text_input("Enter Password", type="password")
 
 if user_pass != MY_PASSWORD:
-    st.info("Please enter the correct password in the sidebar to use Gemini-Ultra.")
-    st.stop() # This stops the rest of the code from running
+    st.info("Enter the correct password in the sidebar to start the engine.")
+    st.stop() 
 
-# --- 2. SETUP & KEY ---
+# --- 2. SETUP & 2026 MODEL ---
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
+    
+    # UPDATED: Using the 2026 standard model name
     model = genai.GenerativeModel(
-        model_name='gemini-1.5-flash',
-        system_instruction="Your name is Gemini-Ultra. You only talk to your creator."
+        model_name='gemini-3-flash-preview',
+        system_instruction="Your name is Gemini-Ultra. Created by a pro 8th-grade dev. You have full memory."
     )
-except:
-    st.error("Check your Secrets!")
+except Exception as e:
+    st.error(f"Setup Error: {e}")
     st.stop()
 
 # --- 3. SIDEBAR HISTORY ---
@@ -59,11 +61,13 @@ if prompt := st.chat_input("Ask your creation..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        history = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages[-5:-1]])
+        # Memory (last 5 messages)
+        history = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages[-6:-1]])
         
+        # Web Search Trigger
         search_data = ""
-        if any(word in prompt.lower() for word in ["news", "update", "today"]):
-            with st.status("Checking web..."):
+        if any(word in prompt.lower() for word in ["news", "update", "today", "score", "blox fruits"]):
+            with st.status("Searching 2026 archives..."):
                 search_data = web_search(prompt)
 
         full_input = f"HISTORY:\n{history}\n\nWEB:\n{search_data}\n\nUSER: {prompt}"
@@ -72,6 +76,7 @@ if prompt := st.chat_input("Ask your creation..."):
         full_response = ""
         
         try:
+            # STREAMING for speed
             for chunk in model.generate_content(full_input, stream=True):
                 if chunk.text:
                     full_response += chunk.text
@@ -80,4 +85,7 @@ if prompt := st.chat_input("Ask your creation..."):
             placeholder.markdown(full_response)
             st.session_state.messages.append({"role": "assistant", "content": full_response})
         except Exception as e:
-            st.error(f"Quota Error: Wait 60 seconds. {e}")
+            if "429" in str(e):
+                st.error("Quota full! Wait 60 seconds.")
+            else:
+                st.error(f"Brain Error: {e}")
