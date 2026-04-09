@@ -1,94 +1,78 @@
 import streamlit as st
 import google.generativeai as genai
 from duckduckgo_search import DDGS
-import time
+import json
+import os
 
-# --- 1. THE LOCK (PASSWORD) ---
-MY_PASSWORD = "death"
-st.sidebar.title("🔐 Access Control")
-user_pass = st.sidebar.text_input("Enter Password", type="password")
-if user_pass != MY_PASSWORD:
-    st.info("Enter the correct password in the sidebar to start the engine.")
-    st.stop()
-
-# --- 2. SETUP & MODEL ---
+# --- 1. SETUP & KEY ---
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
-
-    model = genai.GenerativeModel(
-        model_name='gemini-2.0-flash',
-        system_instruction="Your name is Gemini-Ultra. Created by a pro 8th-grade dev. You have full memory."
-    )
-except Exception as e:
-    st.error(f"Setup Error: {e}")
+    model = genai.GenerativeModel('gemini-3-flash-preview')
+except:
+    st.error("Check your Secrets for GEMINI_API_KEY")
     st.stop()
 
-# --- 3. SIDEBAR HISTORY ---
-st.sidebar.divider()
+# --- 2. SIDEBAR FOR CHAT HISTORY ---
 st.sidebar.title("📚 Chat History")
+
+# Initialize storage for multiple chats
 if "chat_archive" not in st.session_state:
-    st.session_state.chat_archive = {}
+    st.session_state.chat_archive = {} # { "Chat Name": [messages] }
+
+# Function to start a new chat
 if st.sidebar.button("➕ New Chat", use_container_width=True):
     st.session_state.messages = []
     st.rerun()
 
-# --- 4. MAIN UI ---
+st.sidebar.divider()
+
+# List old chats in the sidebar
+for chat_name in st.session_state.chat_archive.keys():
+    if st.sidebar.button(f"💬 {chat_name}", use_container_width=True):
+        st.session_state.messages = st.session_state.chat_archive[chat_name]
+        st.rerun()
+
+# --- 3. MAIN UI ---
 st.title("🌎 Gemini-Ultra OMNI")
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+# Show current chat
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- 5. SEARCH & LOGIC ---
+# --- 4. WEB SEARCH ---
 def web_search(query):
     try:
         with DDGS() as ddgs:
-            results = ddgs.text(query, max_results=1)
-            return f"🌐 {results[0]['body']}" if results else ""
-    except:
-        return ""
+            results = ddgs.text(query, max_results=3)
+            return "\n\n".join([f"🌐 {r['title']}\n{r['body']}" for r in results]) if results else ""
+    except: return ""
 
-if prompt := st.chat_input("Ask your creation..."):
+# --- 5. CHAT LOGIC ---
+if prompt := st.chat_input("Ask anything..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        # Memory (last 5 messages)
-        history = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages[-6:-1]])
-
-        # Web Search Trigger
-        search_data = ""
-        if any(word in prompt.lower() for word in ["news", "update", "today", "score", "blox fruits"]):
-            with st.status("Searching 2026 archives..."):
-                search_data = web_search(prompt)
-
+        # Build memory context
+        history = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages[:-1]])
+        
+        # Check for web needs
+        search_data = web_search(prompt) if any(x in prompt.lower() for x in ["news", "update", "latest"]) else ""
+        
         full_input = f"HISTORY:\n{history}\n\nWEB:\n{search_data}\n\nUSER: {prompt}"
-
-        placeholder = st.empty()
-        full_response = ""
-
-        # --- RETRY LOGIC FOR QUOTA ERRORS ---
-        for attempt in range(3):
-            try:
-                for chunk in model.generate_content(full_input, stream=True):
-                    if chunk.text:
-                        full_response += chunk.text
-                        placeholder.markdown(full_response + "▌")
-
-                placeholder.markdown(full_response)
-                st.session_state.messages.append({"role": "assistant", "content": full_response})
-                break  # success, stop retrying
-
-            except Exception as e:
-                if "429" in str(e):
-                    if attempt < 2:
-                        st.warning(f"Rate limited. Retrying in 15 seconds... (attempt {attempt + 1}/3)")
-                        time.sleep(15)
-                    else:
-                        st.error("Quota full! Please wait a minute and try again.")
-                else:
-                    st.error(f"Brain Error: {e}")
-                    break
+        
+        response = model.generate_content(full_input)
+        ai_text = response.text
+        st.markdown(ai_text)
+        st.session_state.messages.append({"role": "assistant", "content": ai_text})
+        
+        # --- AUTO-SAVE TO SIDEBAR ---
+        # We use the first question as the Chat Name
+        chat_id = st.session_state.messages[0]["content"][:20] + "..."
+        st.session_state.chat_archive[chat_id] = st.session_state.messages
