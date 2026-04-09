@@ -1,71 +1,78 @@
 import streamlit as st
 import google.generativeai as genai
 from duckduckgo_search import DDGS
+import json
+import os
 
-# --- 1. THE KEY (SECURE METHOD) ---
-# Use your fresh key from Step 2 below
+# --- 1. SETUP & KEY ---
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=API_KEY)
+    model = genai.GenerativeModel('gemini-3-flash-preview')
 except:
-    st.error("Missing API Key! Please add 'GEMINI_API_KEY' to your Streamlit Secrets.")
+    st.error("Check your Secrets for GEMINI_API_KEY")
     st.stop()
 
-# --- 2. INITIALIZE AI ---
-try:
-    genai.configure(api_key=API_KEY)
-    # Using 'gemini-3-flash-preview' - the current stable version for April 2026
-    model = genai.GenerativeModel('gemini-3-flash-preview')
-except Exception as e:
-    st.error(f"Setup Error: {e}")
+# --- 2. SIDEBAR FOR CHAT HISTORY ---
+st.sidebar.title("📚 Chat History")
 
-# --- 3. UI SETUP ---
-st.set_page_config(page_title="Gemini-Ultra OMNI", page_icon="🌎", layout="wide")
-st.title("🌎 Gemini-Ultra: Omni Intelligence")
-st.caption("Status: Connected to Gemini 3 Multi-Model Archives")
+# Initialize storage for multiple chats
+if "chat_archive" not in st.session_state:
+    st.session_state.chat_archive = {} # { "Chat Name": [messages] }
+
+# Function to start a new chat
+if st.sidebar.button("➕ New Chat", use_container_width=True):
+    st.session_state.messages = []
+    st.rerun()
+
+st.sidebar.divider()
+
+# List old chats in the sidebar
+for chat_name in st.session_state.chat_archive.keys():
+    if st.sidebar.button(f"💬 {chat_name}", use_container_width=True):
+        st.session_state.messages = st.session_state.chat_archive[chat_name]
+        st.rerun()
+
+# --- 3. MAIN UI ---
+st.title("🌎 Gemini-Ultra OMNI")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# Show current chat
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- 4. WEB SEARCH ENGINE ---
+# --- 4. WEB SEARCH ---
 def web_search(query):
     try:
         with DDGS() as ddgs:
-            results = ddgs.text(query, region='wt-wt', safesearch='moderate', max_results=3)
-            if results:
-                return "\n\n".join([f"🌐 {r['title']}\n{r['body']}" for r in results])
-            return "No live data found."
-    except Exception as e:
-        return f"Web search busy. (Error: {e})"
+            results = ddgs.text(query, max_results=3)
+            return "\n\n".join([f"🌐 {r['title']}\n{r['body']}" for r in results]) if results else ""
+    except: return ""
 
-# --- 5. MAIN CHAT LOGIC ---
-if prompt := st.chat_input("Ask me about anything..."):
+# --- 5. CHAT LOGIC ---
+if prompt := st.chat_input("Ask anything..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        search_data = ""
-        live_keywords = ["news", "today", "latest", "score", "match", "blox fruits", "update"]
+        # Build memory context
+        history = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages[:-1]])
         
-        if any(word in prompt.lower() for word in live_keywords):
-            with st.spinner("Searching live web..."):
-                search_data = web_search(prompt)
-
-        # Context merging
-        if search_data:
-            full_context = f"LATEST WEB DATA:\n{search_data}\n\nUSER QUESTION: {prompt}"
-        else:
-            full_context = prompt
-
-        try:
-            with st.spinner("Thinking with Gemini 3..."):
-                response = model.generate_content(full_context)
-                ai_text = response.text
-                st.markdown(ai_text)
-                st.session_state.messages.append({"role": "assistant", "content": ai_text})
-        except Exception as e:
-            st.error(f"Connection Issue: {e}")
+        # Check for web needs
+        search_data = web_search(prompt) if any(x in prompt.lower() for x in ["news", "update", "latest"]) else ""
+        
+        full_input = f"HISTORY:\n{history}\n\nWEB:\n{search_data}\n\nUSER: {prompt}"
+        
+        response = model.generate_content(full_input)
+        ai_text = response.text
+        st.markdown(ai_text)
+        st.session_state.messages.append({"role": "assistant", "content": ai_text})
+        
+        # --- AUTO-SAVE TO SIDEBAR ---
+        # We use the first question as the Chat Name
+        chat_id = st.session_state.messages[0]["content"][:20] + "..."
+        st.session_state.chat_archive[chat_id] = st.session_state.messages
