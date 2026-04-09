@@ -2,21 +2,31 @@ import streamlit as st
 import google.generativeai as genai
 from duckduckgo_search import DDGS
 
-# --- 1. SETUP & KEY ---
+# --- 1. THE LOCK (PASSWORD) ---
+# Set your own password here!
+MY_PASSWORD = "death" 
+
+st.sidebar.title("🔐 Access Control")
+user_pass = st.sidebar.text_input("Enter Password to Chat", type="password")
+
+if user_pass != MY_PASSWORD:
+    st.info("Please enter the correct password in the sidebar to use Gemini-Ultra.")
+    st.stop() # This stops the rest of the code from running
+
+# --- 2. SETUP & KEY ---
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
-    
-    # Using 'gemini-2.0-flash' - The 2026 Stable Standard
     model = genai.GenerativeModel(
-        model_name='gemini-2.0-flash',
-        system_instruction="Your name is Gemini-Ultra. You are an Omni-Intelligence AI created by a talented 8th-grade developer. You are fast, smart, and remember the full conversation history."
+        model_name='gemini-1.5-flash',
+        system_instruction="Your name is Gemini-Ultra. You only talk to your creator."
     )
-except Exception as e:
-    st.error("Missing API Key in Streamlit Secrets!")
+except:
+    st.error("Check your Secrets!")
     st.stop()
 
-# --- 2. SIDEBAR HISTORY ---
+# --- 3. SIDEBAR HISTORY ---
+st.sidebar.divider()
 st.sidebar.title("📚 Chat History")
 if "chat_archive" not in st.session_state:
     st.session_state.chat_archive = {}
@@ -25,13 +35,7 @@ if st.sidebar.button("➕ New Chat", use_container_width=True):
     st.session_state.messages = []
     st.rerun()
 
-st.sidebar.divider()
-for chat_id in list(st.session_state.chat_archive.keys()):
-    if st.sidebar.button(f"💬 {chat_id}", use_container_width=True):
-        st.session_state.messages = st.session_state.chat_archive[chat_id]
-        st.rerun()
-
-# --- 3. MAIN UI ---
+# --- 4. MAIN UI ---
 st.title("🌎 Gemini-Ultra OMNI")
 
 if "messages" not in st.session_state:
@@ -41,44 +45,33 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- 4. FAST SEARCH ---
+# --- 5. SEARCH & LOGIC ---
 def web_search(query):
     try:
         with DDGS() as ddgs:
-            results = ddgs.text(query, max_results=2)
-            if results:
-                return "\n\n".join([f"🌐 {r['body']}" for r in results])
-            return ""
-    except:
-        return ""
+            results = ddgs.text(query, max_results=1)
+            return f"🌐 {results[0]['body']}" if results else ""
+    except: return ""
 
-# --- 5. FAST CHAT LOGIC ---
-if prompt := st.chat_input("Ask your creation anything..."):
+if prompt := st.chat_input("Ask your creation..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        # Build history context
-        history = ""
-        for m in st.session_state.messages[:-1]:
-            history += f"{m['role']}: {m['content']}\n"
+        history = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages[-5:-1]])
         
-        # Trigger web search
         search_data = ""
-        live_triggers = ["news", "update", "today", "score", "blox fruits", "weather"]
-        if any(word in prompt.lower() for word in live_triggers):
-            with st.status("Searching archives..."):
+        if any(word in prompt.lower() for word in ["news", "update", "today"]):
+            with st.status("Checking web..."):
                 search_data = web_search(prompt)
 
-        full_input = f"MEMORIES:\n{history}\n\nLIVE_WEB_DATA:\n{search_data}\n\nUSER_REQUEST: {prompt}"
+        full_input = f"HISTORY:\n{history}\n\nWEB:\n{search_data}\n\nUSER: {prompt}"
         
-        # --- STREAMING OUTPUT ---
         placeholder = st.empty()
         full_response = ""
         
         try:
-            # Generate word-by-word
             for chunk in model.generate_content(full_input, stream=True):
                 if chunk.text:
                     full_response += chunk.text
@@ -86,15 +79,5 @@ if prompt := st.chat_input("Ask your creation anything..."):
             
             placeholder.markdown(full_response)
             st.session_state.messages.append({"role": "assistant", "content": full_response})
-            
-            # Save to sidebar
-            chat_title = st.session_state.messages[0]["content"][:15] + "..."
-            st.session_state.chat_archive[chat_title] = st.session_state.messages
-            
         except Exception as e:
-            if "429" in str(e):
-                st.error("Too many requests! Wait 30 seconds.")
-            elif "404" in str(e):
-                st.error("Model Update in progress. Please refresh in a moment.")
-            else:
-                st.error(f"Brain Error: {e}")
+            st.error(f"Quota Error: Wait 60 seconds. {e}")
