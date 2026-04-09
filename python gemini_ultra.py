@@ -1,92 +1,70 @@
 import streamlit as st
 import google.generativeai as genai
-from duckduckgo_search import DDGS
 
-# --- 1. SETUP & KEY ---
+# --- 1. KREATIONS SETUP ---
+st.set_page_config(page_title="Kreations AI", page_icon="🎨")
+
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
     
-    # Using 'gemini-2.0-flash' for the best balance of speed and 2026 stability
+    # We use a simple list of models to try in order
+    # If one fails, the code will try the next one
+    model_options = ['gemini-1.5-flash', 'gemini-2.0-flash']
+    
+    if "model_choice" not in st.session_state:
+        st.session_state.model_choice = model_options[0]
+        
     model = genai.GenerativeModel(
-        model_name='gemini-2.0-flash',
-        system_instruction="Your name is Gemini-Ultra. You are an Omni-Intelligence AI created by a talented student developer. You are fast, smart, and helpful."
+        model_name=st.session_state.model_choice,
+        system_instruction="Your name is Kreations AI. You were built by an expert 8th-grade developer. You are helpful and creative."
     )
 except Exception as e:
-    st.error("Missing API Key in Streamlit Secrets!")
+    st.error("Setup Error: Check your Secrets!")
     st.stop()
 
-# --- 2. SIDEBAR HISTORY ---
-st.sidebar.title("📚 Chat History")
-if "chat_archive" not in st.session_state:
-    st.session_state.chat_archive = {}
+# --- 2. SIDEBAR ---
+st.sidebar.title("🎨 Kreations Studio")
+st.sidebar.info("The next generation of AI, built for creators.")
 
-if st.sidebar.button("➕ New Chat", use_container_width=True):
+if st.sidebar.button("➕ Clear Canvas (New Chat)", use_container_width=True):
     st.session_state.messages = []
     st.rerun()
 
-st.sidebar.divider()
-# Display saved chat sessions
-for chat_id in list(st.session_state.chat_archive.keys()):
-    if st.sidebar.button(f"💬 {chat_id}", use_container_width=True):
-        st.session_state.messages = st.session_state.chat_archive[chat_id]
-        st.rerun()
-
 # --- 3. MAIN UI ---
-st.title("🌎 Gemini-Ultra OMNI")
+st.title("🚀 Kreations AI")
+st.caption("Powered by the Gemini 2026 Engine")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Show current conversation
+# Show the conversation
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- 4. FAST SEARCH ---
-def web_search(query):
-    try:
-        with DDGS() as ddgs:
-            results = ddgs.text(query, max_results=1)
-            return f"🌐 {results[0]['body']}" if results else ""
-    except:
-        return ""
-
-# --- 5. CHAT LOGIC ---
-if prompt := st.chat_input("Ask your creation anything..."):
+# --- 4. CHAT LOGIC ---
+if prompt := st.chat_input("What will we build today?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        # Build history context (last 5 messages for quota safety)
-        history = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages[-6:-1]])
-        
-        # Search for live info if keywords match
-        search_data = ""
-        if any(word in prompt.lower() for word in ["news", "update", "today", "score", "blox fruits"]):
-            with st.status("Searching archives..."):
-                search_data = web_search(prompt)
-
-        full_input = f"HISTORY:\n{history}\n\nWEB:\n{search_data}\n\nUSER: {prompt}"
-        
-        placeholder = st.empty()
-        full_response = ""
-        
         try:
-            # Simple non-streaming for maximum stability on free tier
-            response = model.generate_content(full_input)
-            full_response = response.text
+            # We add a simple prompt call (no streaming for stability)
+            response = model.generate_content(prompt)
+            ai_response = response.text
             
-            placeholder.markdown(full_response)
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
-            
-            # Save this session to sidebar using the first message
-            chat_title = st.session_state.messages[0]["content"][:15] + "..."
-            st.session_state.chat_archive[chat_title] = st.session_state.messages
+            st.markdown(ai_response)
+            st.session_state.messages.append({"role": "assistant", "content": ai_response})
             
         except Exception as e:
-            if "429" in str(e):
-                st.error("Quota reached! Wait 60 seconds and try again.")
+            # Smart Error Handling
+            if "404" in str(e):
+                st.warning("🔄 Switching Model Engine... please try your message again.")
+                # Switch to the other model if the first one isn't found
+                st.session_state.model_choice = model_options[1] if st.session_state.model_choice == model_options[0] else model_options[0]
+            elif "429" in str(e):
+                st.error("⚠️ Quota limit! Google's servers need a 60-second break.")
             else:
                 st.error(f"Brain Error: {e}")
