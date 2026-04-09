@@ -1,78 +1,72 @@
 import streamlit as st
 import google.generativeai as genai
 from duckduckgo_search import DDGS
-import json
-import os
 
-# --- 1. SETUP & KEY ---
+# --- 1. THE LOCK ---
+MY_PASSWORD = "your_secret_password" 
+
+st.sidebar.title("🔐 Access Control")
+user_pass = st.sidebar.text_input("Enter Password", type="password")
+
+if user_pass != MY_PASSWORD:
+    st.info("App Locked. Enter password to start.")
+    st.stop() 
+
+# --- 2. SETUP (STABLE 2026 MODEL) ---
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel('gemini-3-flash-preview')
-except:
-    st.error("Check your Secrets for GEMINI_API_KEY")
+    
+    # gemini-2.0-flash is the most reliable "Free" model right now
+    model = genai.GenerativeModel(
+        model_name='gemini-2.0-flash',
+        system_instruction="Your name is Gemini-Ultra. Created by a pro 8th-grade dev."
+    )
+except Exception as e:
+    st.error("Setup Error. Check your API Key.")
     st.stop()
 
-# --- 2. SIDEBAR FOR CHAT HISTORY ---
-st.sidebar.title("📚 Chat History")
-
-# Initialize storage for multiple chats
-if "chat_archive" not in st.session_state:
-    st.session_state.chat_archive = {} # { "Chat Name": [messages] }
-
-# Function to start a new chat
-if st.sidebar.button("➕ New Chat", use_container_width=True):
-    st.session_state.messages = []
-    st.rerun()
-
-st.sidebar.divider()
-
-# List old chats in the sidebar
-for chat_name in st.session_state.chat_archive.keys():
-    if st.sidebar.button(f"💬 {chat_name}", use_container_width=True):
-        st.session_state.messages = st.session_state.chat_archive[chat_name]
-        st.rerun()
-
-# --- 3. MAIN UI ---
+# --- 3. UI & HISTORY ---
 st.title("🌎 Gemini-Ultra OMNI")
-
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Show current chat
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- 4. WEB SEARCH ---
+# --- 4. SEARCH ---
 def web_search(query):
     try:
         with DDGS() as ddgs:
-            results = ddgs.text(query, max_results=3)
-            return "\n\n".join([f"🌐 {r['title']}\n{r['body']}" for r in results]) if results else ""
+            results = ddgs.text(query, max_results=1)
+            return f"🌐 {results[0]['body']}" if results else ""
     except: return ""
 
-# --- 5. CHAT LOGIC ---
-if prompt := st.chat_input("Ask anything..."):
+# --- 5. LOGIC ---
+if prompt := st.chat_input("Ask me anything..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        # Build memory context
-        history = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages[:-1]])
+        history = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages[-5:-1]])
         
-        # Check for web needs
-        search_data = web_search(prompt) if any(x in prompt.lower() for x in ["news", "update", "latest"]) else ""
-        
+        search_data = ""
+        if any(word in prompt.lower() for word in ["news", "update", "today", "score"]):
+            with st.status("Searching..."):
+                search_data = web_search(prompt)
+
         full_input = f"HISTORY:\n{history}\n\nWEB:\n{search_data}\n\nUSER: {prompt}"
         
-        response = model.generate_content(full_input)
-        ai_text = response.text
-        st.markdown(ai_text)
-        st.session_state.messages.append({"role": "assistant", "content": ai_text})
+        placeholder = st.empty()
+        full_response = ""
         
-        # --- AUTO-SAVE TO SIDEBAR ---
-        # We use the first question as the Chat Name
-        chat_id = st.session_state.messages[0]["content"][:20] + "..."
-        st.session_state.chat_archive[chat_id] = st.session_state.messages
+        try:
+            # We removed streaming here to keep the connection "stable" and avoid 429 errors
+            response = model.generate_content(full_input)
+            full_response = response.text
+            placeholder.markdown(full_response)
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
+        except Exception as e:
+            st.error(f"Quota reached. Wait 1 minute. ({e})")
